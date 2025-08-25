@@ -17,6 +17,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
 
 
 import java.util.ArrayList;
@@ -25,7 +26,11 @@ import java.util.List;
 
 public class EventListner implements Listener {
     public static double maxDurability;
-    private final NamespacedKey durabilityNamespace = new NamespacedKey(CustomBoats.getPlugin(),"durability");
+    private final NamespacedKey durabilityNamespace;
+
+    EventListner(JavaPlugin plugin){
+        this.durabilityNamespace = new NamespacedKey(plugin,"durability");
+    }
 
 
 

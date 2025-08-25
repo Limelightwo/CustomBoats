@@ -15,12 +15,12 @@ public final class CustomBoats extends JavaPlugin {
     @Override
     public void onEnable() {
         FileConfiguration config = this.getConfig();
-        if (config.getDouble("maxDurability") == 0.0) {
+        if (config.getKeys(true).isEmpty()) {
             config.set("maxDurability", 250.0);
             saveConfig();
         }
         maxDurability = config.getDouble("maxDurability");
-        getServer().getPluginManager().registerEvents(new EventListner(),this);
+        getServer().getPluginManager().registerEvents(new EventListner(this),this);
     }
 
     @Override
