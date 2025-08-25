@@ -1,0 +1,4 @@
+name: CustomBoats
+version: '1.0-SNAPSHOT'
+main: org.limelight.customBoats.CustomBoats
+api-version: '1.21'
