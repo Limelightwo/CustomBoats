@@ -7,9 +7,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import static org.limelight.customBoats.EventListner.maxDurability;
 
 public final class CustomBoats extends JavaPlugin {
-    public static CustomBoats getPlugin(){
-        return plugin;
-    }
+
 
 
 
@@ -22,7 +20,6 @@ public final class CustomBoats extends JavaPlugin {
             saveConfig();
         }
         maxDurability = config.getDouble("maxDurability");
-        plugin = this;
         getServer().getPluginManager().registerEvents(new EventListner(),this);
     }
 
@@ -30,5 +27,5 @@ public final class CustomBoats extends JavaPlugin {
     public void onDisable() {
 
     }
-    private static CustomBoats plugin;
+
 }
