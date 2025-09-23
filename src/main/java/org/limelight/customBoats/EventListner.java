@@ -13,6 +13,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.vehicle.VehicleCreateEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
 import org.bukkit.event.vehicle.VehicleMoveEvent;
+import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -242,20 +243,40 @@ public class EventListner implements Listener {
     @EventHandler
     public void onBoatCraftEvent(CraftItemEvent event) {
 
+
         ItemStack currentItem = event.getCurrentItem();
         if (currentItem != null){
             Material boatType = currentItem.getType();
             if ((isBoat(boatType) || isChestBoat(boatType)) ) {
-                Player player = event.getWhoClicked().getKiller();
-
+                event.setCancelled(true);
                 Location location = event.getClickedInventory().getLocation();
                 location.set(location.getX() + 0.5, location.getY() + 1, location.getZ() + 0.5);
 
-                player.playSound(player,Sound.BLOCK_SMITHING_TABLE_USE,1,1);
 
-                World world = player.getWorld();
+                World world = location.getWorld();
+                world.playSound(location,Sound.BLOCK_SMITHING_TABLE_USE,1,1);
                 world.spawnEntity(location, boatToEntity(boatType));
-                event.setCurrentItem(new ItemStack(Material.STICK));
+
+
+                CraftingInventory inventory = event.getInventory();
+                ItemStack[] contents = inventory.getMatrix();
+
+                int index = -1;
+                for (ItemStack itemStack : contents){
+                    index += 1;
+                    if (itemStack != null) {
+                        int amount = itemStack.getAmount();
+                        if (amount == 1){
+                            contents[index] = null;
+                        }
+                        else{
+                            itemStack.setAmount(amount-1);
+                            contents[index] = itemStack;
+                        }
+                    }
+                }
+
+                inventory.setMatrix(contents);
             }
         }
     }
@@ -270,42 +291,41 @@ public class EventListner implements Listener {
 
             passengers.forEach((entity) -> { if (entity instanceof Player player ){playerPassengers.add(player);} });
 
-            Player driver = playerPassengers.getFirst();
-            if (driver != null){
+            PersistentDataContainer data = boat.getPersistentDataContainer();
+            Location startLocation = event.getFrom().clone();
+            startLocation.setY(0);
 
-                PersistentDataContainer data = boat.getPersistentDataContainer();
-                Location startLocation = event.getFrom().clone();
-                startLocation.setY(0);
+            Location endLocation = event.getTo().clone();
+            endLocation.setY(0);
 
-                Location endLocation = event.getTo().clone();
-                endLocation.setY(0);
+            double durability = getBoatDurability(data) - startLocation.distance(endLocation);
+            if (durability > 0) {
+                saveBoatDurability(data,durability);
+                int percentage = (int) ((durability/maxDurability) * (100));
+                String message = percentageToColor(percentage) + "Durability " + (int) Math.round(durability) + "/" + (int) (maxDurability) + " (" + percentage + "%)";
 
-                double durability = getBoatDurability(data) - startLocation.distance(endLocation);
-                if (durability > 0) {
-                    saveBoatDurability(data,durability);
-                    int percentage = (int) ((durability/maxDurability) * (100));
-                    String message = percentageToColor(percentage) + "Durability " + (int) Math.round(durability) + "/" + (int) (maxDurability) + " (" + percentage + "%)";
-
-                    for (Player player : playerPassengers) {
-                        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(message));
-                    }
-
+                for (Player player : playerPassengers) {
+                    player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(message));
                 }
-                else {
-                    removeBoatDurability(data);
-                    boat.remove();
 
-                    driver.playSound(driver,Sound.ITEM_SHIELD_BREAK,1,1);
-                    Material boatType = boat.getBoatMaterial();
+            }
+            else {
+                removeBoatDurability(data);
+                boat.remove();
 
-                    if (boat instanceof ChestBoat) {
-                        dropChestBoatItems(boat.getLocation(), boatType);
-                    }
-                    else{
-                        dropBoatItems(boat.getLocation(), boatType);
-                    }
+                for (Player player : playerPassengers) {
+                    player.playSound(player,Sound.ITEM_SHIELD_BREAK,1,1);
+                }
+                Material boatType = boat.getBoatMaterial();
+
+                if (boat instanceof ChestBoat) {
+                    dropChestBoatItems(boat.getLocation(), boatType);
+                }
+                else{
+                    dropBoatItems(boat.getLocation(), boatType);
                 }
             }
+
         }
     }
 
