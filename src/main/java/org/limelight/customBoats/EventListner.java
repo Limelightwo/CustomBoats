@@ -275,7 +275,6 @@ public class EventListner implements Listener {
                         }
                     }
                 }
-
                 inventory.setMatrix(contents);
             }
         }
