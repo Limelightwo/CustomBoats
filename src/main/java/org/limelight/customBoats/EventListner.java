@@ -28,9 +28,11 @@ import java.util.List;
 public class EventListner implements Listener {
     public static double maxDurability;
     private final NamespacedKey durabilityNamespace;
+    private final JavaPlugin plugin;
 
     EventListner(JavaPlugin plugin){
         this.durabilityNamespace = new NamespacedKey(plugin,"durability");
+        this.plugin = plugin;
     }
 
 
@@ -238,93 +240,115 @@ public class EventListner implements Listener {
     }
 
 
-
-
     @EventHandler
     public void onBoatCraftEvent(CraftItemEvent event) {
-
-
         ItemStack currentItem = event.getCurrentItem();
-        if (currentItem != null){
-            Material boatType = currentItem.getType();
-            if ((isBoat(boatType) || isChestBoat(boatType)) ) {
-                event.setCancelled(true);
-                Location location = event.getClickedInventory().getLocation();
-                location.set(location.getX() + 0.5, location.getY() + 1, location.getZ() + 0.5);
+        if (currentItem == null) return;
+
+        Material boatType = currentItem.getType();
+        if (!(isBoat(boatType) || isChestBoat(boatType))) return;
 
 
-                World world = location.getWorld();
-                world.playSound(location,Sound.BLOCK_SMITHING_TABLE_USE,1,1);
-                world.spawnEntity(location, boatToEntity(boatType));
+        Location clickedLocation = event.getClickedInventory().getLocation().clone();
+        event.setCancelled(true);
 
+        if (clickedLocation.getBlock().getType() == Material.CRAFTER) return;
+        CraftingInventory inventory = event.getInventory();
+        ItemStack[] contents = inventory.getMatrix().clone();
 
-                CraftingInventory inventory = event.getInventory();
-                ItemStack[] contents = inventory.getMatrix();
+        // Copy location safely
 
-                int index = -1;
-                for (ItemStack itemStack : contents){
-                    index += 1;
-                    if (itemStack != null) {
-                        int amount = itemStack.getAmount();
-                        if (amount == 1){
-                            contents[index] = null;
-                        }
-                        else{
-                            itemStack.setAmount(amount-1);
-                            contents[index] = itemStack;
-                        }
-                    }
+        // Async: process inventory modifications
+        Bukkit.getAsyncScheduler().runNow(plugin, task -> {
+            // Reduce items in the crafting matrix
+            for (int i = 0; i < contents.length; i++) {
+                ItemStack itemStack = contents[i];
+                if (itemStack == null) continue;
+
+                int amount = itemStack.getAmount();
+                if (amount <= 1) {
+                    contents[i] = null;
+                } else {
+                    itemStack.setAmount(amount - 1);
+                    contents[i] = itemStack;
                 }
-                inventory.setMatrix(contents);
             }
-        }
+
+            // Schedule inventory update on main thread (fast, safe)
+            Bukkit.getScheduler().runTask(plugin, () -> inventory.setMatrix(contents));
+
+            // Schedule world modifications on region thread
+            Bukkit.getRegionScheduler().run(plugin, clickedLocation, regionTask -> {
+                // Adjust spawn location
+                clickedLocation.add(0.5, 1, 0.5);
+
+                World world = clickedLocation.getWorld();
+                if (world == null) return;
+
+                // Play smithing table sound and spawn the boat
+                world.playSound(clickedLocation, Sound.BLOCK_SMITHING_TABLE_USE, 1f, 1f);
+                world.spawnEntity(clickedLocation, boatToEntity(boatType));
+            });
+        });
     }
 
 
-
     @EventHandler
-    public void onVehicleMove(VehicleMoveEvent event){
-        if (event.getVehicle() instanceof Boat boat){
+    public void onVehicleMove(VehicleMoveEvent event) {
+
+        if (event.getVehicle() instanceof Boat boat) {
+
             List<Entity> passengers = boat.getPassengers();
-            List<Player> playerPassengers = new ArrayList<>();
 
-            passengers.forEach((entity) -> { if (entity instanceof Player player ){playerPassengers.add(player);} });
-
-            PersistentDataContainer data = boat.getPersistentDataContainer();
             Location startLocation = event.getFrom().clone();
             startLocation.setY(0);
 
             Location endLocation = event.getTo().clone();
             endLocation.setY(0);
 
-            double durability = getBoatDurability(data) - startLocation.distance(endLocation);
-            if (durability > 0) {
-                saveBoatDurability(data,durability);
-                int percentage = (int) ((durability/maxDurability) * (100));
-                String message = percentageToColor(percentage) + "Durability " + (int) Math.round(durability) + "/" + (int) (maxDurability) + " (" + percentage + "%)";
+            Bukkit.getAsyncScheduler().runNow(plugin, regionTask -> {
+                PersistentDataContainer data = boat.getPersistentDataContainer();
+                List<Player> playerPassengers = new ArrayList<>();
 
-                for (Player player : playerPassengers) {
-                    player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(message));
+                passengers.forEach((entity) -> {
+                    if (entity instanceof Player player) {
+                        playerPassengers.add(player);
+                    }
+                });
+
+                double durability = getBoatDurability(data) - startLocation.distance(endLocation);
+                if (durability > 0) {
+                    saveBoatDurability(data, durability);
+                    int percentage = (int) ((durability / maxDurability) * (100));
+                    String message = percentageToColor(percentage) + "Durability " + (int) Math.round(durability) + "/" + (int) (maxDurability) + " (" + percentage + "%)";
+
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        for (Player player : playerPassengers) {
+                            player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(message));
+                        }
+                    });
+
+                } else {
+                    removeBoatDurability(data);
+                    Material boatType = boat.getBoatMaterial();
+                    Location location = boat.getLocation();
+
+                    Bukkit.getRegionScheduler().run(plugin, location, task -> {
+                        boat.remove();
+                        if (boat instanceof ChestBoat) {
+                            dropChestBoatItems(location, boatType);
+                        } else {
+                            dropBoatItems(location, boatType);
+                        }
+
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            for (Player player : playerPassengers) {
+                                player.playSound(player, Sound.ITEM_SHIELD_BREAK, 1, 1);
+                            }
+                        });
+                    });
                 }
-
-            }
-            else {
-                removeBoatDurability(data);
-                boat.remove();
-
-                for (Player player : playerPassengers) {
-                    player.playSound(player,Sound.ITEM_SHIELD_BREAK,1,1);
-                }
-                Material boatType = boat.getBoatMaterial();
-
-                if (boat instanceof ChestBoat) {
-                    dropChestBoatItems(boat.getLocation(), boatType);
-                }
-                else{
-                    dropBoatItems(boat.getLocation(), boatType);
-                }
-            }
-
+            });
         }
     }
 

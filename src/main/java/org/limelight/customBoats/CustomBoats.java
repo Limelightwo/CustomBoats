@@ -1,5 +1,6 @@
 package org.limelight.customBoats;
 
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -14,18 +15,20 @@ public final class CustomBoats extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        saveDefaultConfig();
         FileConfiguration config = this.getConfig();
-        if (config.getKeys(true).isEmpty()) {
-            config.set("maxDurability", 250.0);
-            saveConfig();
-        }
-        maxDurability = config.getDouble("maxDurability");
-        getServer().getPluginManager().registerEvents(new EventListner(this),this);
+
+        maxDurability = config.getDouble("max-durability");
+
+        if (maxDurability > 0.0d)
+            getServer().getPluginManager().registerEvents(new EventListner(this),this);
     }
 
     @Override
     public void onDisable() {
-
+        Bukkit.getAsyncScheduler().cancelTasks(this);
+        Bukkit.getScheduler().cancelTasks(this);
+        Bukkit.getGlobalRegionScheduler().cancelTasks(this);
     }
 
 }
